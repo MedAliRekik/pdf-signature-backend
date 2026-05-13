@@ -1,171 +1,110 @@
-# pdf-signature-backend
 # PDF Signature Backend
 
-Backend Spring Boot permettant de signer visuellement un fichier PDF en ajoutant :
+Backend **Spring Boot** qui permet d’uploader un PDF, d’ajouter une signature visuelle générée à partir d’un nom, d’ajouter un texte optionnel, puis de retourner le fichier signé en téléchargement.
 
-- Une signature générée à partir d’un nom
-- Un texte personnalisé
-- Une position dynamique dans le document PDF
+## Objectif du projet
 
-Le projet utilise Apache PDFBox pour manipuler les fichiers PDF.
+Ce service expose une API REST pour :
 
----
+1. recevoir un fichier PDF,
+2. valider la requête et les paramètres,
+3. ajouter une signature texte (nom du signataire) à une position donnée,
+4. ajouter un texte personnalisé optionnel,
+5. générer et renvoyer le PDF signé.
 
-# Objectif du projet
-
-Ce projet a pour objectif de fournir une API REST simple permettant de :
-
-1. Importer un fichier PDF
-2. Ajouter une signature visuelle générée à partir du nom du signataire
-3. Ajouter un texte optionnel
-4. Générer un nouveau PDF modifié
-5. Télécharger le PDF signé
-
----
-
-# Technologies utilisées
+## Technologies utilisées
 
 - Java 21
-- Spring Boot 3
+- Spring Boot 4
+- Spring Web
+- Spring Validation
+- Apache PDFBox 3.0.7
+- springdoc-openapi (Swagger UI)
 - Maven
-- Apache PDFBox
-- Jakarta Validation
 
-Apache PDFBox est une bibliothèque Java open source permettant de créer et modifier des fichiers PDF.  
-:contentReference[oaicite:0]{index=0}
-
----
-
-# Architecture du projet
-
-Le projet respecte les principes :
-
-- SOLID
-- Clean Code
-- Separation of Concerns
-- Architecture en couches
-
-Structure actuelle :
+## Structure actuelle
 
 ```text
 src/main/java/com/onlyu/pdfsignature
-│
 ├── controller
 │   └── PdfSignatureController.java
-│
 ├── dto
 │   ├── PdfSignatureRequest.java
 │   └── PdfSignatureResponse.java
-│
 ├── exception
 │   ├── GlobalExceptionHandler.java
 │   └── PdfProcessingException.java
-│
 ├── service
 │   ├── PdfSignatureService.java
-│   │
 │   └── impl
 │       └── PdfSignatureServiceImpl.java
-│
 └── PdfSignatureBackendApplication.java
+```
 
-Fonctionnalités actuelles
-Upload d’un fichier PDF
-Validation des données
-Vérification du format PDF
-Ajout d’une signature texte
-Ajout d’un texte personnalisé
-Génération d’un nouveau PDF
-Téléchargement du PDF signé
-Gestion centralisée des exceptions
-Fonctionnalités prévues
-Backend
-Gestion de plusieurs pages
-Positionnement dynamique
-Gestion des polices personnalisées
-Ajout de signatures image
-Historique des signatures
-Génération de QR Code
-Sécurisation des endpoints
-Tests unitaires
-Frontend Angular
-Upload du PDF
-Prévisualisation PDF
-Drag & Drop de la signature
-Ajout dynamique du texte
-Téléchargement du PDF final
-UI responsive
-Endpoint actuel
-Signature PDF
-POST /api/pdf/sign
-Request
+## Endpoints disponibles
 
-Multipart form-data :
+### `POST /api/pdf/sign`
 
-Key	Type
-file	File
-request	JSON
+- **Consomme** : `multipart/form-data`
+- **Produit** : `application/pdf`
+- **Description** : signe visuellement un PDF et renvoie le document final.
 
-Exemple JSON :
+#### Paramètres multipart
 
-{
-  "signerName": "Mohamed Ali Rekik",
-  "additionalText": "Bon pour accord",
-  "pageNumber": 1,
-  "x": 100,
-  "y": 150
-}
-Response
-signed-document.pdf
-Dépendances Maven principales
-<dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-web</artifactId>
-</dependency>
+- `file` *(file, obligatoire)* : document PDF à signer.
+- `request` *(json, obligatoire)* : objet de signature :
+    - `signerName` *(string, obligatoire)*
+    - `additionalText` *(string, optionnel)*
+    - `pageNumber` *(int, obligatoire, >= 1)*
+    - `x` *(float, obligatoire, >= 0)*
+    - `y` *(float, obligatoire, >= 0)*
 
-<dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-validation</artifactId>
-</dependency>
+## Exemple d’appel API (`multipart/form-data`)
 
-<dependency>
-    <groupId>org.apache.pdfbox</groupId>
-    <artifactId>pdfbox</artifactId>
-    <version>3.0.7</version>
-</dependency>
+```bash
+curl -X POST "http://localhost:8080/api/pdf/sign" \
+  -H "Accept: application/pdf" \
+  -F "file=@/chemin/document.pdf;type=application/pdf" \
+  -F 'request={"signerName":"Ali Rekik","additionalText":"Bon pour accord","pageNumber":1,"x":120,"y":140};type=application/json' \
+  --output signed-document.pdf
+```
 
-Apache PDFBox 3.x est la branche moderne actuelle du projet PDFBox.
+## Lancement du projet
 
+### Prérequis
 
-Lancement du projet
-Prérequis
-Java 21
-Maven 3.9+
-IntelliJ IDEA
-Installation
-git clone <repository-url>
+- Java 21
+- Maven 3.9+
 
-cd pdf-signature-backend
-Build
+### Commandes
+
+```bash
 mvn clean install
-Run
 mvn spring-boot:run
+```
 
-Application disponible sur :
+Application : `http://localhost:8080`
 
-http://localhost:8080
-Philosophie du projet
+Swagger UI : `http://localhost:8080/swagger-ui.html`
+OpenAPI JSON : `http://localhost:8080/v3/api-docs`
 
-Le projet est développé progressivement avec :
+## Sécurité et robustesse déjà en place
 
-Une architecture propre et maintenable
-Des responsabilités bien séparées
-Une logique métier centralisée
-Une API REST simple
-Une base évolutive pour les futures fonctionnalités
-Auteur
+- validation des champs (`@Valid`, contraintes Bean Validation),
+- vérification du type MIME `application/pdf`,
+- vérification du header binaire `%PDF-`,
+- limite de taille des fichiers (Spring multipart + garde applicative),
+- validation du numéro de page sur le document réel,
+- gestion centralisée des erreurs avec messages maîtrisés,
+- logs applicatifs sur les étapes clés sans fuite de contenu PDF.
 
-Ali Rekik
-Full Stack Java / Angular Engineer
+## Améliorations futures
 
-::contentReference[oaicite:2]{index=2}
+- signature graphique (image manuscrite) en plus du texte,
+- choix de police/couleur/taille dynamiques,
+- support multi-signatures et multi-pages en une requête,
+- ajout d’une signature numérique cryptographique (PKCS#12),
+- authentification/autorisation (JWT, OAuth2),
+- audit trail (traçabilité des signatures),
+- tests unitaires et d’intégration plus complets (controller/service),
+- conteneurisation Docker et CI/CD.

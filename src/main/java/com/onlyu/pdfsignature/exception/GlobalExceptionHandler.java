@@ -4,11 +4,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
-import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -28,10 +30,9 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> handleValidationException(MethodArgumentNotValidException ex) {
         Map<String, Object> errors = new HashMap<>();
-
-        ex.getBindingResult().getFieldErrors().forEach(error ->
-                errors.put(error.getField(), error.getDefaultMessage())
-        );
+        for (FieldError error : ex.getBindingResult().getFieldErrors()) {
+            errors.put(error.getField(), error.getDefaultMessage());
+        }
 
         logger.warn("Erreur de validation sur la requête de signature PDF");
         return buildErrorResponse(HttpStatus.BAD_REQUEST, errors);
@@ -41,6 +42,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleMultipartErrors(Exception ex) {
         logger.warn("Erreur multipart: {}", ex.getMessage());
         return buildErrorResponse(HttpStatus.BAD_REQUEST, "Requête multipart invalide");
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, Object>> handleMalformedJson(HttpMessageNotReadableException ex) {
+        logger.warn("Payload JSON invalide dans la partie request");
+        return buildErrorResponse(HttpStatus.BAD_REQUEST, "Le JSON du champ request est invalide");
     }
 
     @ExceptionHandler(Exception.class)

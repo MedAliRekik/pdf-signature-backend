@@ -19,6 +19,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
+
 @Service
 public class PdfSignatureServiceImpl implements PdfSignatureService {
 
@@ -33,6 +34,7 @@ public class PdfSignatureServiceImpl implements PdfSignatureService {
 
     @Override
     public byte[] signPdf(MultipartFile file, PdfSignatureRequest request) {
+        validateRequest(request);
         validateFile(file);
         logger.info("Validation du fichier PDF réussie: fileName={}, size={} bytes", file.getOriginalFilename(), file.getSize());
 
@@ -53,6 +55,15 @@ public class PdfSignatureServiceImpl implements PdfSignatureService {
         } catch (IOException e) {
             logger.error("Erreur lors du traitement du fichier PDF", e);
             throw new PdfProcessingException("Erreur lors du traitement du fichier PDF", e);
+        }
+    }
+
+    private void validateRequest(PdfSignatureRequest request) {
+        if (request == null) {
+            throw new PdfProcessingException("Les paramètres de signature sont obligatoires");
+        }
+        if (!Float.isFinite(request.x()) || !Float.isFinite(request.y())) {
+            throw new PdfProcessingException("Les coordonnées de signature sont invalides");
         }
     }
 

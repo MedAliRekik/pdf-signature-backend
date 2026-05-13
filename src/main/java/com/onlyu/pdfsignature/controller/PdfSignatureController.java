@@ -3,10 +3,9 @@ package com.onlyu.pdfsignature.controller;
 import com.onlyu.pdfsignature.dto.PdfSignatureRequest;
 import com.onlyu.pdfsignature.service.PdfSignatureService;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.enums.ParameterIn;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.parameters.RequestBody;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -37,16 +36,14 @@ public class PdfSignatureController {
 
     @Operation(
             summary = "Signer un PDF",
-            description = "Ajoute une signature visuelle et un texte optionnel dans un PDF. " +
-                    "Le endpoint consomme multipart/form-data et retourne un PDF.",
-            parameters = {
-                    @Parameter(name = "file", in = ParameterIn.QUERY, description = "Fichier PDF à signer"),
-                    @Parameter(name = "signerName", in = ParameterIn.QUERY, description = "Nom du signataire"),
-                    @Parameter(name = "additionalText", in = ParameterIn.QUERY, description = "Texte optionnel"),
-                    @Parameter(name = "pageNumber", in = ParameterIn.QUERY, description = "Numéro de page (>= 1)"),
-                    @Parameter(name = "x", in = ParameterIn.QUERY, description = "Position horizontale (>= 0)"),
-                    @Parameter(name = "y", in = ParameterIn.QUERY, description = "Position verticale (>= 0)")
-            },
+            description = "Ajoute une signature visuelle et un texte optionnel dans un PDF.",
+            requestBody = @RequestBody(
+                    required = true,
+                    content = @Content(
+                            mediaType = MediaType.MULTIPART_FORM_DATA_VALUE,
+                            schema = @Schema(implementation = PdfSignatureMultipartSchema.class)
+                    )
+            ),
             responses = {
                     @ApiResponse(responseCode = "200", description = "PDF signé généré",
                             content = @Content(mediaType = MediaType.APPLICATION_PDF_VALUE,
@@ -61,17 +58,13 @@ public class PdfSignatureController {
             produces = MediaType.APPLICATION_PDF_VALUE
     )
     public ResponseEntity<byte[]> signPdf(
-            @Parameter(description = "Fichier PDF à signer", required = true,
-                    content = @Content(mediaType = MediaType.APPLICATION_OCTET_STREAM_VALUE,
-                            schema = @Schema(type = "string", format = "binary")))
             @RequestPart("file") MultipartFile file,
-            @Parameter(description = "Paramètres de signature", required = true)
             @Valid @RequestPart("request") PdfSignatureRequest request
     ) {
         logger.info("Réception d'une demande de signature PDF: fileName={}, pageNumber={}, hasAdditionalText={}",
                 file != null ? file.getOriginalFilename() : null,
-                request.pageNumber(),
-                request.additionalText() != null && !request.additionalText().isBlank());
+                request != null ? request.pageNumber() : null,
+                request != null && request.additionalText() != null && !request.additionalText().isBlank());
 
         byte[] signedPdf = pdfSignatureService.signPdf(file, request);
 
@@ -86,5 +79,13 @@ public class PdfSignatureController {
                                 .toString()
                 )
                 .body(signedPdf);
+    }
+
+    private record PdfSignatureMultipartSchema(
+            @Schema(type = "string", format = "binary", description = "Fichier PDF à signer")
+            String file,
+            @Schema(description = "Paramètres de signature JSON")
+            PdfSignatureRequest request
+    ) {
     }
 }

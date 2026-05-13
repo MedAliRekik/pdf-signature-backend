@@ -1,31 +1,44 @@
 # PDF Signature Backend
 
-Backend **Spring Boot** qui permet d’uploader un PDF, d’ajouter une signature visuelle générée à partir d’un nom, d’ajouter un texte optionnel, puis de retourner le fichier signé en téléchargement.
+Backend **Spring Boot** pour une future application Angular. Le service permet d’uploader un PDF, de poser une signature visuelle générée depuis le nom du signataire, d’ajouter un texte optionnel, puis de renvoyer le PDF final.
 
 ## Objectif du projet
 
-Ce service expose une API REST pour :
-
-1. recevoir un fichier PDF,
-2. valider la requête et les paramètres,
-3. ajouter une signature texte (nom du signataire) à une position donnée,
-4. ajouter un texte personnalisé optionnel,
-5. générer et renvoyer le PDF signé.
+L’API REST expose un endpoint métier pour :
+1. recevoir un fichier PDF ;
+2. valider les paramètres de signature ;
+3. signer visuellement à une position donnée ;
+4. ajouter un texte optionnel ;
+5. retourner le document signé en téléchargement.
 
 ## Technologies utilisées
 
 - Java 21
-- Spring Boot 4
+- Spring Boot 4.0.6
 - Spring Web
 - Spring Validation
 - Apache PDFBox 3.0.7
-- springdoc-openapi (Swagger UI)
+- springdoc-openapi (Swagger UI) 2.8.13
+- SLF4J (via Spring Boot logging)
 - Maven
 
-## Structure actuelle
+## Architecture actuelle
+
+Architecture en couches simple et maintenable :
+- **controller** : exposition HTTP/multipart
+- **dto** : objets d’entrée/sortie API
+- **service** : logique métier de signature PDF
+- **exception** : gestion centralisée des erreurs
+- **config** : CORS global + OpenAPI
+
+## Structure des packages
 
 ```text
 src/main/java/com/onlyu/pdfsignature
+├── config
+│   ├── CorsConfig.java
+│   ├── CorsProperties.java
+│   └── OpenApiConfig.java
 ├── controller
 │   └── PdfSignatureController.java
 ├── dto
@@ -41,25 +54,25 @@ src/main/java/com/onlyu/pdfsignature
 └── PdfSignatureBackendApplication.java
 ```
 
-## Endpoints disponibles
+## Endpoint disponible
 
 ### `POST /api/pdf/sign`
 
 - **Consomme** : `multipart/form-data`
 - **Produit** : `application/pdf`
-- **Description** : signe visuellement un PDF et renvoie le document final.
+- **Description** : signe visuellement un PDF et renvoie le fichier signé.
 
-#### Paramètres multipart
+### Paramètres multipart attendus
 
 - `file` *(file, obligatoire)* : document PDF à signer.
-- `request` *(json, obligatoire)* : objet de signature :
-    - `signerName` *(string, obligatoire)*
-    - `additionalText` *(string, optionnel)*
-    - `pageNumber` *(int, obligatoire, >= 1)*
-    - `x` *(float, obligatoire, >= 0)*
-    - `y` *(float, obligatoire, >= 0)*
+- `request` *(json, obligatoire)* :
+  - `signerName` *(string, obligatoire, non vide, max 120)*
+  - `additionalText` *(string, optionnel, max 240)*
+  - `pageNumber` *(int, obligatoire, >= 1)*
+  - `x` *(float, obligatoire, >= 0)*
+  - `y` *(float, obligatoire, >= 0)*
 
-## Exemple d’appel API (`multipart/form-data`)
+## Exemple d’appel API multipart/form-data
 
 ```bash
 curl -X POST "http://localhost:8080/api/pdf/sign" \
@@ -69,7 +82,44 @@ curl -X POST "http://localhost:8080/api/pdf/sign" \
   --output signed-document.pdf
 ```
 
-## Lancement du projet
+## Configuration CORS pour Angular
+
+CORS est configuré **globalement** (pas de `@CrossOrigin` dans les controllers) sur `/api/**` :
+- origine autorisée (temporaire) : `http://localhost:4200`
+- méthodes : `GET, POST, PUT, DELETE, OPTIONS`
+- headers : tous (`*`)
+- header exposé : `Content-Disposition` (utile pour récupérer le nom du fichier côté Angular)
+
+Propriété dédiée :
+
+```properties
+app.cors.allowed-origin=http://localhost:4200
+```
+
+## Swagger / OpenAPI
+
+- Swagger UI : `http://localhost:8080/swagger-ui.html`
+- OpenAPI JSON : `http://localhost:8080/v3/api-docs`
+
+Le endpoint `/api/pdf/sign` est documenté avec :
+- payload `multipart/form-data`
+- partie `file` (binaire)
+- partie `request` (JSON)
+- réponse `application/pdf`
+
+## Sécurité minimale et robustesse
+
+- validation Bean Validation sur le DTO
+- vérification type MIME `application/pdf`
+- vérification signature binaire `%PDF-`
+- limite de taille upload via Spring + garde applicative
+- validation du numéro de page contre le PDF réel
+- validation des coordonnées (valeurs finies)
+- gestion centralisée des erreurs
+- messages d’erreur maîtrisés sans stack trace exposée au client
+- logs techniques sur étapes clés sans journaliser le contenu PDF
+
+## Instructions de lancement
 
 ### Prérequis
 
@@ -85,26 +135,13 @@ mvn spring-boot:run
 
 Application : `http://localhost:8080`
 
-Swagger UI : `http://localhost:8080/swagger-ui.html`
-OpenAPI JSON : `http://localhost:8080/v3/api-docs`
+## Prochaines évolutions prévues
 
-## Sécurité et robustesse déjà en place
-
-- validation des champs (`@Valid`, contraintes Bean Validation),
-- vérification du type MIME `application/pdf`,
-- vérification du header binaire `%PDF-`,
-- limite de taille des fichiers (Spring multipart + garde applicative),
-- validation du numéro de page sur le document réel,
-- gestion centralisée des erreurs avec messages maîtrisés,
-- logs applicatifs sur les étapes clés sans fuite de contenu PDF.
-
-## Améliorations futures
-
-- signature graphique (image manuscrite) en plus du texte,
-- choix de police/couleur/taille dynamiques,
-- support multi-signatures et multi-pages en une requête,
-- ajout d’une signature numérique cryptographique (PKCS#12),
-- authentification/autorisation (JWT, OAuth2),
-- audit trail (traçabilité des signatures),
-- tests unitaires et d’intégration plus complets (controller/service),
-- conteneurisation Docker et CI/CD.
+- signature image manuscrite en plus du texte
+- paramétrage police/couleur/taille
+- multi-signatures / multi-pages par requête
+- signature numérique cryptographique (PKCS#12)
+- authentification/autorisation (JWT/OAuth2)
+- audit trail des opérations
+- tests unitaires/intégration renforcés
+- dockerisation et CI/CD

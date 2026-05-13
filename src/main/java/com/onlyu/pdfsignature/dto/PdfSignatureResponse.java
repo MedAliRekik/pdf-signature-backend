@@ -1,4 +1,7 @@
 package com.onlyu.pdfsignature.dto;
 
-public class PdfSignatureResponse {
+public record PdfSignatureResponse(
+        String fileName,
+        String message
+) {
 }

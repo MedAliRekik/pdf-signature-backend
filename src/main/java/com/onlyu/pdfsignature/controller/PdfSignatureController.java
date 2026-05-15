@@ -1,6 +1,8 @@
 package com.onlyu.pdfsignature.controller;
 
+import tools.jackson.databind.ObjectMapper;
 import com.onlyu.pdfsignature.dto.PdfSignatureRequest;
+import com.onlyu.pdfsignature.exception.PdfProcessingException;
 import com.onlyu.pdfsignature.service.PdfSignatureService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -8,7 +10,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.parameters.RequestBody;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ContentDisposition;
@@ -29,14 +30,16 @@ public class PdfSignatureController {
     private static final Logger logger = LoggerFactory.getLogger(PdfSignatureController.class);
 
     private final PdfSignatureService pdfSignatureService;
+    private final ObjectMapper objectMapper;
 
-    public PdfSignatureController(PdfSignatureService pdfSignatureService) {
+    public PdfSignatureController(PdfSignatureService pdfSignatureService, ObjectMapper objectMapper) {
         this.pdfSignatureService = pdfSignatureService;
+        this.objectMapper = objectMapper;
     }
 
     @Operation(
             summary = "Signer un PDF",
-            description = "Ajoute une signature visuelle et un texte optionnel dans un PDF.",
+            description = "Ajoute une ou plusieurs signatures visuelles et un texte optionnel dans un PDF.",
             requestBody = @RequestBody(
                     required = true,
                     content = @Content(
@@ -59,11 +62,13 @@ public class PdfSignatureController {
     )
     public ResponseEntity<byte[]> signPdf(
             @RequestPart("file") MultipartFile file,
-            @Valid @RequestPart("request") PdfSignatureRequest request
+            @RequestPart("request") String requestJson
     ) {
-        logger.info("Réception d'une demande de signature PDF: fileName={}, pageNumber={}, hasAdditionalText={}",
+        PdfSignatureRequest request = parseRequest(requestJson);
+
+        logger.info("Réception d'une demande de signature PDF: fileName={}, signatures={}, hasAdditionalText={}",
                 file != null ? file.getOriginalFilename() : null,
-                request != null ? request.pageNumber() : null,
+                request != null && request.signatures() != null ? request.signatures().size() : null,
                 request != null && request.additionalText() != null && !request.additionalText().isBlank());
 
         byte[] signedPdf = pdfSignatureService.signPdf(file, request);
@@ -81,11 +86,22 @@ public class PdfSignatureController {
                 .body(signedPdf);
     }
 
+    private PdfSignatureRequest parseRequest(String requestJson) {
+        if (requestJson == null || requestJson.isBlank()) {
+            throw new PdfProcessingException("Aucune signature fournie");
+        }
+        try {
+            return objectMapper.readValue(requestJson, PdfSignatureRequest.class);
+        } catch (Exception e) {
+            throw new PdfProcessingException("Le JSON du champ request est invalide", e);
+        }
+    }
+
     private record PdfSignatureMultipartSchema(
             @Schema(type = "string", format = "binary", description = "Fichier PDF à signer")
             String file,
             @Schema(description = "Paramètres de signature JSON")
-            PdfSignatureRequest request
+            String request
     ) {
     }
 }

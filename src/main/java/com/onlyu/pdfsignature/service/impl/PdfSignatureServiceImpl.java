@@ -1,6 +1,7 @@
 package com.onlyu.pdfsignature.service.impl;
 
 import com.onlyu.pdfsignature.dto.PdfSignatureRequest;
+import com.onlyu.pdfsignature.dto.SignaturePlacementRequest;
 import com.onlyu.pdfsignature.exception.PdfProcessingException;
 import com.onlyu.pdfsignature.service.PdfSignatureService;
 import org.apache.pdfbox.Loader;
@@ -18,7 +19,6 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-
 
 @Service
 public class PdfSignatureServiceImpl implements PdfSignatureService {
@@ -41,52 +41,66 @@ public class PdfSignatureServiceImpl implements PdfSignatureService {
         try (PDDocument document = Loader.loadPDF(file.getBytes());
              ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
 
-            validatePageNumber(document, request.pageNumber());
-            logger.info("Validation des paramètres de signature réussie: pageNumber={}, x={}, y={}",
-                    request.pageNumber(), request.x(), request.y());
-
-            PDPage page = document.getPage(request.pageNumber() - 1);
-            addTextToPage(document, page, request);
+            for (SignaturePlacementRequest signature : request.signatures()) {
+                validateSignaturePlacement(document, signature);
+                PDPage page = document.getPage(signature.pageNumber() - 1);
+                addSignatureToPage(document, page, signature, request.additionalText());
+            }
 
             document.save(outputStream);
-            logger.info("Génération du PDF signé terminée");
+            logger.info("Génération du PDF signé terminée avec {} signature(s)", request.signatures().size());
             return outputStream.toByteArray();
 
         } catch (IOException e) {
             logger.error("Erreur lors du traitement du fichier PDF", e);
-            throw new PdfProcessingException("Erreur lors du traitement du fichier PDF", e);
+            throw new PdfProcessingException("PDF invalide", e);
         }
     }
 
     private void validateRequest(PdfSignatureRequest request) {
-        if (request == null) {
-            throw new PdfProcessingException("Les paramètres de signature sont obligatoires");
+        if (request == null || request.signatures() == null || request.signatures().isEmpty()) {
+            throw new PdfProcessingException("Aucune signature fournie");
         }
-        if (!Float.isFinite(request.x()) || !Float.isFinite(request.y())) {
-            throw new PdfProcessingException("Les coordonnées de signature sont invalides");
+    }
+
+    private void validateSignaturePlacement(PDDocument document, SignaturePlacementRequest signature) {
+        if (signature == null || signature.pageNumber() == null || signature.x() == null || signature.y() == null) {
+            throw new PdfProcessingException("Coordonnées invalides");
+        }
+
+        if (!Float.isFinite(signature.x()) || !Float.isFinite(signature.y())) {
+            throw new PdfProcessingException("Coordonnées invalides");
+        }
+
+        if (signature.pageNumber() < 1 || signature.pageNumber() > document.getNumberOfPages()) {
+            throw new PdfProcessingException("Page inexistante");
+        }
+
+        if (signature.signerName() == null || signature.signerName().isBlank()) {
+            throw new PdfProcessingException("Coordonnées invalides");
         }
     }
 
     private void validateFile(MultipartFile file) {
         if (file == null || file.isEmpty()) {
-            throw new PdfProcessingException("Le fichier PDF est obligatoire");
+            throw new PdfProcessingException("Erreur lors de la lecture du fichier");
         }
 
         if (file.getSize() > maxFileSizeBytes) {
-            throw new PdfProcessingException("Le fichier PDF dépasse la taille maximale autorisée");
+            throw new PdfProcessingException("Erreur lors de la lecture du fichier");
         }
 
         if (!PDF_CONTENT_TYPE.equalsIgnoreCase(file.getContentType())) {
-            throw new PdfProcessingException("Le fichier doit être au format PDF");
+            throw new PdfProcessingException("PDF invalide");
         }
 
         try {
             byte[] header = file.getBytes();
             if (!hasPdfMagicHeader(header)) {
-                throw new PdfProcessingException("Le contenu du fichier n'est pas un PDF valide");
+                throw new PdfProcessingException("PDF invalide");
             }
         } catch (IOException e) {
-            throw new PdfProcessingException("Impossible de lire le fichier PDF", e);
+            throw new PdfProcessingException("Erreur lors de la lecture du fichier", e);
         }
     }
 
@@ -102,13 +116,8 @@ public class PdfSignatureServiceImpl implements PdfSignatureService {
         return true;
     }
 
-    private void validatePageNumber(PDDocument document, int pageNumber) {
-        if (pageNumber < 1 || pageNumber > document.getNumberOfPages()) {
-            throw new PdfProcessingException("Le numéro de page est invalide");
-        }
-    }
-
-    private void addTextToPage(PDDocument document, PDPage page, PdfSignatureRequest request) throws IOException {
+    private void addSignatureToPage(PDDocument document, PDPage page, SignaturePlacementRequest signature, String additionalText)
+            throws IOException {
 
         try (PDPageContentStream contentStream = new PDPageContentStream(
                 document,
@@ -122,15 +131,15 @@ public class PdfSignatureServiceImpl implements PdfSignatureService {
 
             contentStream.beginText();
             contentStream.setFont(signatureFont, SIGNATURE_FONT_SIZE);
-            contentStream.newLineAtOffset(request.x(), request.y());
-            contentStream.showText(request.signerName());
+            contentStream.newLineAtOffset(signature.x(), signature.y());
+            contentStream.showText(signature.signerName());
             contentStream.endText();
 
-            if (request.additionalText() != null && !request.additionalText().isBlank()) {
+            if (additionalText != null && !additionalText.isBlank()) {
                 contentStream.beginText();
                 contentStream.setFont(textFont, TEXT_FONT_SIZE);
-                contentStream.newLineAtOffset(request.x(), request.y() - 20);
-                contentStream.showText(request.additionalText());
+                contentStream.newLineAtOffset(signature.x(), signature.y() - 20);
+                contentStream.showText(additionalText);
                 contentStream.endText();
             }
         }
